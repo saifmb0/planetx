@@ -64,7 +64,7 @@ export default function SettingsScreen() {
         <View style={[styles.settingRow, styles.borderTop]}>
           <View style={styles.settingInfo}>
             <Text style={styles.settingLabel}>AI Model</Text>
-            <Text style={styles.settingValue}>gemini-2.0-flash-exp</Text>
+            <Text style={styles.settingValue}>Gemini 2.5 Flash</Text>
           </View>
         </View>
       </GlassCard>

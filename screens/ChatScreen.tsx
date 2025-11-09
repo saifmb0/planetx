@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Linking,
 } from 'react-native';
+import Markdown from 'react-native-markdown-display';
 import { GlassCard } from '../components/GlassCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { Colors, Spacing, Typography, BorderRadius } from '../constants/theme';
@@ -41,6 +42,10 @@ export default function ChatScreen({ route }: any) {
   const handleSendMessage = async (text?: string) => {
     const messageText = text || inputText.trim();
     if (!messageText || isLoading) return;
+
+    // Start timer
+    const startTime = Date.now();
+    console.log(`[ChatScreen] ⏱️ Query started: "${messageText}"`);
 
     // Clear input
     setInputText('');
@@ -69,37 +74,89 @@ export default function ChatScreen({ route }: any) {
 
     try {
       // Step 1: Search NASA data
+      const searchStart = Date.now();
       const searchResult = await NasaDataService.searchLessons(messageText);
+      console.log(`[ChatScreen] ⏱️ Search completed: ${Date.now() - searchStart}ms`);
       
       if (searchResult.lessons.length === 0) {
         throw new Error('No relevant lessons found');
       }
 
-      // Step 2: Sanitize lessons with Gemini
-      const sanitized = await GeminiService.sanitizeLessons(
-        searchResult.lessons.slice(0, 5)
-      );
+      // Step 2: Convert to clean format (NO AI SANITIZATION - TOO SLOW!)
+      // Extract ONLY essential fields - strip HTML and unnecessary details
+      const cleanLessons = searchResult.lessons.slice(0, 5).map(l => {
+        // Helper to strip HTML and truncate
+        const stripHTML = (html: string | undefined, maxLength = 200) => {
+          if (!html) return 'Not specified';
+          return html.replace(/<[^>]*>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim()
+                    .substring(0, maxLength);
+        };
 
-      setCurrentContext(sanitized);
+        return {
+          lesson_id: l.lesson_id,
+          title: l.title.substring(0, 150), // Truncate title
+          abstract: stripHTML(l.abstract, 250), // Short abstract only
+          // SKIP driving_event - too much HTML garbage!
+          driving_event: '', 
+          root_cause: stripHTML(l.lesson, 300), // Core lesson only
+          recommendation: stripHTML(l.recommendation, 200), // Brief recommendation
+          metadata: {
+            mission: l.mission?.substring(0, 50) || '',
+            center: l.center?.substring(0, 30) || '',
+            subjects: [], // Skip subjects - not needed
+          },
+        };
+      });
 
-      // Step 3: Generate AI response
-      const aiResult = await GeminiService.answerQuestion(messageText, sanitized);
+      setCurrentContext(cleanLessons);
 
-      // Remove loading message and add real response
+      // Step 3: Generate AI response with STREAMING
+      const aiStart = Date.now();
+      
+      // Create streaming message that will be updated in real-time
+      const streamingMessageId = `${Date.now()}-streaming`;
       setMessages(prev => {
         const filtered = prev.filter(m => !m.isLoading);
-        const aiMessage: ChatMessage = {
-          id: Date.now().toString(),
+        const streamingMessage: ChatMessage = {
+          id: streamingMessageId,
           role: 'assistant',
-          content: aiResult.answer,
+          content: '', // Will be populated via streaming
           timestamp: new Date(),
-          lessonIds: aiResult.citedLessonIds,
         };
-        return [...filtered, aiMessage];
+        return [...filtered, streamingMessage];
       });
+
+      // Stream response chunks to UI
+      const aiResult = await GeminiService.answerQuestionStream(
+        messageText, 
+        cleanLessons,
+        (chunk) => {
+          // Update message content in real-time!
+          setMessages(prev => prev.map(m => 
+            m.id === streamingMessageId 
+              ? { ...m, content: m.content + chunk }
+              : m
+          ));
+        }
+      );
+      
+      console.log(`[ChatScreen] ⏱️ AI response completed: ${Date.now() - aiStart}ms`);
+
+      const totalTime = Date.now() - startTime;
+      console.log(`[ChatScreen] ⏱️ ✅ TOTAL QUERY TIME: ${totalTime}ms (${(totalTime / 1000).toFixed(2)}s)`);
+
+      // Update the streaming message with final citation IDs
+      setMessages(prev => prev.map(m => 
+        m.id === streamingMessageId 
+          ? { ...m, lessonIds: aiResult.citedLessonIds }
+          : m
+      ));
 
     } catch (error: any) {
       console.error('Chat error:', error);
+      console.log(`[ChatScreen] ⏱️ ❌ Query failed after ${Date.now() - startTime}ms`);
 
       // Remove loading and show error
       setMessages(prev => {
@@ -118,16 +175,29 @@ export default function ChatScreen({ route }: any) {
   };
 
   const handleLessonIdPress = async (lessonId: number) => {
-    const lesson = await NasaDataService.getLessonById(lessonId);
-    if (lesson) {
-      // Show lesson details (you could navigate to a detail screen)
-      const detailMessage: ChatMessage = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: `**Lesson ${lessonId}: ${lesson.title}**\n\n${lesson.abstract}\n\n**Mission:** ${lesson.mission || 'N/A'}\n**Center:** ${lesson.center || 'N/A'}`,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, detailMessage]);
+    // Open NASA LLIS website for this lesson
+    const nasaUrl = `https://llis.nasa.gov/lesson/${lessonId}`;
+    
+    try {
+      const canOpen = await Linking.canOpenURL(nasaUrl);
+      if (canOpen) {
+        await Linking.openURL(nasaUrl);
+      } else {
+        console.error('Cannot open NASA URL');
+        // Fallback: show lesson details in chat
+        const lesson = await NasaDataService.getLessonById(lessonId);
+        if (lesson) {
+          const detailMessage: ChatMessage = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: `**Lesson ${lessonId}: ${lesson.title}**\n\n${lesson.abstract}\n\n**Mission:** ${lesson.mission || 'N/A'}\n**Center:** ${lesson.center || 'N/A'}\n\n_Note: Could not open NASA website. Try visiting: ${nasaUrl}_`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, detailMessage]);
+        }
+      }
+    } catch (error) {
+      console.error('Error opening NASA URL:', error);
     }
   };
 
@@ -160,14 +230,36 @@ export default function ChatScreen({ route }: any) {
           gradient={isUser}
           gradientColors={isUser ? [Colors.primary, Colors.primaryDark] : undefined}
         >
-          <Text style={isUser ? styles.userText : styles.assistantText}>
-            {message.content}
-          </Text>
+          {isUser ? (
+            <Text style={styles.userText}>{message.content}</Text>
+          ) : (
+            <Markdown
+              style={markdownStyles}
+              onLinkPress={(url) => {
+                // Handle lesson links
+                const lessonMatch = url.match(/lesson\/(\d+)/);
+                if (lessonMatch) {
+                  const lessonId = parseInt(lessonMatch[1]);
+                  handleLessonIdPress(lessonId);
+                  return false; // Prevent default
+                }
+                // Open other URLs normally
+                Linking.openURL(url);
+                return false;
+              }}
+            >
+              {/* Convert [Lesson 1234] to markdown links */}
+              {message.content.replace(
+                /\[Lesson (\d+)\]/g,
+                '[Lesson $1](https://llis.nasa.gov/lesson/$1)'
+              )}
+            </Markdown>
+          )}
           
-          {/* Render cited lesson IDs as clickable links */}
+          {/* Render cited lesson IDs as clickable links to NASA */}
           {message.lessonIds && message.lessonIds.length > 0 && (
             <View style={styles.citationsContainer}>
-              <Text style={styles.citationsLabel}>Referenced Lessons:</Text>
+              <Text style={styles.citationsLabel}>📚 View on NASA LLIS:</Text>
               <View style={styles.citationButtons}>
                 {message.lessonIds.map(id => (
                   <TouchableOpacity
@@ -175,7 +267,7 @@ export default function ChatScreen({ route }: any) {
                     style={styles.citationButton}
                     onPress={() => handleLessonIdPress(id)}
                   >
-                    <Text style={styles.citationText}>ID: {id}</Text>
+                    <Text style={styles.citationText}>Lesson {id} →</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -189,14 +281,27 @@ export default function ChatScreen({ route }: any) {
   return (
     <KeyboardAvoidingView 
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       <View style={styles.container}>
+        {/* AstroBot Banner */}
+        <GlassCard style={styles.headerBanner} gradient gradientColors={[Colors.primary + '40', Colors.primaryDark + '40']}>
+          <View style={styles.bannerContent}>
+            <Text style={styles.bannerIcon}>🤖</Text>
+            <View style={styles.bannerTextContainer}>
+              <Text style={styles.bannerTitle}>AstroBot</Text>
+              <Text style={styles.bannerSubtitle}>NASA Mission Intelligence Assistant</Text>
+            </View>
+          </View>
+        </GlassCard>
+
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
           contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         >
           {messages.length === 0 ? (
@@ -258,12 +363,40 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  headerBanner: {
+    marginHorizontal: Spacing.md,
+    marginTop: Spacing.xl + Spacing.sm, // Extra padding for notch/camera cutouts
+    marginBottom: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  bannerIcon: {
+    fontSize: 32,
+    marginRight: Spacing.sm,
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: Colors.primary,
+  },
+  bannerSubtitle: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
   messagesContainer: {
     flex: 1,
   },
   messagesContent: {
+    flexGrow: 1,
     padding: Spacing.md,
-    paddingBottom: Spacing.xl,
   },
   messageContainer: {
     marginBottom: Spacing.md,
@@ -332,7 +465,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxl * 2,
   },
   emptyIcon: {
     fontSize: 80,
@@ -407,3 +539,74 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
 });
+
+// Markdown styles for AI responses
+const markdownStyles = {
+  body: {
+    color: Colors.text,
+    fontSize: Typography.fontSize.md,
+    lineHeight: 22,
+  },
+  paragraph: {
+    marginTop: 0,
+    marginBottom: Spacing.sm,
+    color: Colors.text,
+  },
+  strong: {
+    fontWeight: 'bold' as const,
+    color: Colors.primary,
+  },
+  em: {
+    fontStyle: 'italic' as const,
+  },
+  list_item: {
+    flexDirection: 'row' as const,
+    marginBottom: Spacing.xs,
+  },
+  bullet_list: {
+    marginBottom: Spacing.sm,
+  },
+  ordered_list: {
+    marginBottom: Spacing.sm,
+  },
+  code_inline: {
+    backgroundColor: Colors.glassHighlight,
+    color: Colors.primary,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  fence: {
+    backgroundColor: Colors.glassHighlight,
+    padding: Spacing.sm,
+    borderRadius: BorderRadius.sm,
+    marginVertical: Spacing.xs,
+  },
+  heading1: {
+    fontSize: Typography.fontSize.xl,
+    fontWeight: 'bold' as const,
+    color: Colors.text,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  heading2: {
+    fontSize: Typography.fontSize.lg,
+    fontWeight: 'bold' as const,
+    color: Colors.text,
+    marginTop: Spacing.sm,
+    marginBottom: Spacing.xs,
+  },
+  heading3: {
+    fontSize: Typography.fontSize.md,
+    fontWeight: 'bold' as const,
+    color: Colors.primary,
+    marginTop: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  link: {
+    color: Colors.primary,
+    textDecorationLine: 'underline' as const,
+    fontWeight: '600' as const,
+  },
+};
