@@ -278,7 +278,7 @@ The main challenges were:
 2. **[Brief point]** - [One sentence explanation] [Lesson 5678]  
 3. **[Brief point]** - [One sentence explanation] [Lesson 9012]
 
-**Bottom line:** [One sentence with 1-2 practical recommendations]
+**Summary:** [One sentence with 1-2 practical recommendations]
 
 Now answer the user's question:`;
 
