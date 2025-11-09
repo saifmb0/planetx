@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Planetx",
-    "slug": "Planetx",
+    "name": "AstroScope",
+    "slug": "AstroScope",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/astrobot_icon.png",
@@ -13,9 +13,14 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.saifmb0.astroscope",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.saifmb0.astroscope",
       "adaptiveIcon": {
         "foregroundImage": "./assets/astrobot_icon.png",
         "backgroundColor": "#ffffff"
@@ -25,6 +30,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c5821b9f-d4e5-4250-a73e-1adda0bca0ca"
+      }
     }
   }
 }

@@ -5,8 +5,10 @@
  */
 
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import { GEMINI_API_KEY } from '@env';
+import Constants from 'expo-constants';
 import { NasaLesson, SanitizedLesson } from '../types/nasa';
+
+const GEMINI_API_KEY = Constants.expoConfig?.extra?.GEMINI_API_KEY;
 
 const MODEL_NAME = 'gemini-2.5-flash'; // Latest experimental model - faster and better
 const AI_TIMEOUT = 30000; // 30 seconds timeout
