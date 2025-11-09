@@ -115,30 +115,37 @@ export default function ChatScreen({ route }: any) {
       // Step 3: Generate AI response with STREAMING
       const aiStart = Date.now();
       
-      // Create streaming message that will be updated in real-time
-      const streamingMessageId = `${Date.now()}-streaming`;
-      setMessages(prev => {
-        const filtered = prev.filter(m => !m.isLoading);
-        const streamingMessage: ChatMessage = {
-          id: streamingMessageId,
-          role: 'assistant',
-          content: '', // Will be populated via streaming
-          timestamp: new Date(),
-        };
-        return [...filtered, streamingMessage];
-      });
-
+      // Keep loading message until first chunk arrives
+      let firstChunkReceived = false;
+      
       // Stream response chunks to UI
+      const streamingMessageId = `${Date.now()}-streaming`;
+      
       const aiResult = await GeminiService.answerQuestionStream(
         messageText, 
         cleanLessons,
         (chunk) => {
-          // Update message content in real-time!
-          setMessages(prev => prev.map(m => 
-            m.id === streamingMessageId 
-              ? { ...m, content: m.content + chunk }
-              : m
-          ));
+          // On first chunk, replace loading message with streaming message
+          if (!firstChunkReceived) {
+            firstChunkReceived = true;
+            setMessages(prev => {
+              const filtered = prev.filter(m => !m.isLoading);
+              const streamingMessage: ChatMessage = {
+                id: streamingMessageId,
+                role: 'assistant',
+                content: chunk,
+                timestamp: new Date(),
+              };
+              return [...filtered, streamingMessage];
+            });
+          } else {
+            // Update existing streaming message
+            setMessages(prev => prev.map(m => 
+              m.id === streamingMessageId 
+                ? { ...m, content: m.content + chunk }
+                : m
+            ));
+          }
         }
       );
       
