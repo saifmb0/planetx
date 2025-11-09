@@ -4,13 +4,13 @@
  * Pipeline 2 (Synthesizer): Answer user questions with context
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import { GEMINI_API_KEY } from '@env';
 import { NasaLesson, SanitizedLesson } from '../types/nasa';
 
-const MODEL_NAME = 'gemini-2.5-flash'; // Using latest stable flash model
+const MODEL_NAME = 'gemini-2.0-flash-exp'; // Latest experimental model - faster and better
 const AI_TIMEOUT = 30000; // 30 seconds timeout
-const TEMPERATURE = 0.4;
+const TEMPERATURE = 0.4; // Balanced temperature
 
 export class GeminiService {
   private static instance: GeminiService;
@@ -27,11 +27,30 @@ export class GeminiService {
       model: MODEL_NAME,
       generationConfig: {
         temperature: TEMPERATURE,
-        topK: 40,
-        topP: 0.95,
-        maxOutputTokens: 2048,
+        // NO maxOutputTokens - let it use full context window
       },
+      // Remove safety settings that might block responses
+      safetySettings: [
+        {
+          category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+        {
+          category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+          threshold: HarmBlockThreshold.BLOCK_NONE,
+        },
+      ],
     });
+    
+    console.log(`[GeminiService] 🚀 Initialized with model: ${MODEL_NAME}`);
   }
 
   static getInstance(): GeminiService {
@@ -131,7 +150,7 @@ Fix: ${l.recommendation}
 ---
 `).join('\n');
 
-    const prompt = `You are a helpful NASA mission advisor explaining space engineering to a general audience. Keep your response brief and accessible.
+    const prompt = `You are a helpful NASA mission advisor explaining space engineering to a general audience. Keep your response brief, accessible and of value. Don't use filler words. Don't use jargon.
 
 AVAILABLE NASA LESSONS:
 ${contextText}
@@ -166,6 +185,13 @@ Now answer the user's question:`;
       
       // Get the full answer at once (streaming API not compatible with RN)
       const fullAnswer = await this.generateWithTimeout(prompt);
+      
+      console.log(`[GeminiService] 🔍 Full answer length: ${fullAnswer.length}`);
+      console.log(`[GeminiService] 🔍 Full answer preview: "${fullAnswer.substring(0, 100)}..."`);
+      
+      if (!fullAnswer || fullAnswer.trim().length === 0) {
+        throw new Error('Empty response from Gemini API');
+      }
       
       // Simulate streaming by chunking the response (makes UX feel faster!)
       const words = fullAnswer.split(' ');
@@ -288,19 +314,53 @@ Now answer the user's question:`;
   private async generateWithTimeout(prompt: string): Promise<string> {
     return new Promise(async (resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        reject(new Error('Gemini API timeout (>5s)'));
+        reject(new Error('Gemini API timeout (>30s)'));
       }, AI_TIMEOUT);
 
       try {
-        const apiStartTime = Date.now();
-        console.log(`[GeminiService] ⏱️ Prompt length: ${prompt.length} characters`);
+        const totalStartTime = Date.now();
+        console.log(`[GeminiService] ⏱️ Prompt: ${prompt.length} chars, ~${Math.ceil(prompt.length / 4)} tokens`);
+        
+        // Time: API request
+        const requestStartTime = Date.now();
         const result = await this.model.generateContent(prompt);
+        console.log(`[GeminiService] ⏱️ → API request sent: ${Date.now() - requestStartTime}ms`);
+        
         clearTimeout(timeoutId);
 
+        // Time: Response parsing
+        const parseStartTime = Date.now();
         const response = await result.response;
+        console.log(`[GeminiService] ⏱️ → Response received: ${Date.now() - parseStartTime}ms`);
+        
+        // Debug: Check raw candidates
+        if (response.candidates && response.candidates.length > 0) {
+          const candidate = response.candidates[0];
+          console.log(`[GeminiService] 🔍 Candidate parts:`, candidate.content?.parts?.length || 0);
+          if (candidate.content?.parts?.[0]) {
+            console.log(`[GeminiService] 🔍 First part text length:`, candidate.content.parts[0].text?.length || 0);
+          }
+        }
+        
+        // Time: Text extraction
+        const extractStartTime = Date.now();
         const text = response.text();
+        console.log(`[GeminiService] ⏱️ → Text extracted: ${Date.now() - extractStartTime}ms`);
+        
+        // Debug: Check response structure
+        console.log(`[GeminiService] 🔍 Response object:`, JSON.stringify({
+          candidates: response.candidates?.length,
+          finishReason: response.candidates?.[0]?.finishReason,
+          safetyRatings: response.candidates?.[0]?.safetyRatings?.length,
+          textLength: text.length,
+        }));
+        
+        // Get usage metadata if available
+        if (response.usageMetadata) {
+          console.log(`[GeminiService] 📊 Tokens → Input: ${response.usageMetadata.promptTokenCount}, Output: ${response.usageMetadata.candidatesTokenCount}, Total: ${response.usageMetadata.totalTokenCount}`);
+        }
 
-        console.log(`[GeminiService] ⏱️ API call completed in ${Date.now() - apiStartTime}ms`);
+        console.log(`[GeminiService] ⏱️ ✅ TOTAL API TIME: ${Date.now() - totalStartTime}ms`);
         resolve(text);
       } catch (error) {
         clearTimeout(timeoutId);
