@@ -286,23 +286,23 @@ export default function ChatScreen({ route }: any) {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <View style={styles.container}>
-        {/* AstroBot Banner */}
-        <GlassCard style={styles.headerBanner} gradient gradientColors={[Colors.primary + '40', Colors.primaryDark + '40']}>
-          <View style={styles.bannerContent}>
-            <Text style={styles.bannerIcon}>🤖</Text>
-            <View style={styles.bannerTextContainer}>
-              <Text style={styles.bannerTitle}>AstroBot</Text>
-              <Text style={styles.bannerSubtitle}>NASA Mission Intelligence Assistant</Text>
-            </View>
+    <View style={styles.container}>
+      {/* AstroBot Banner */}
+      <GlassCard style={styles.headerBanner} gradient gradientColors={[Colors.primary + '40', Colors.primaryDark + '40']}>
+        <View style={styles.bannerContent}>
+          <Text style={styles.bannerIcon}>🤖</Text>
+          <View style={styles.bannerTextContainer}>
+            <Text style={styles.bannerTitle}>AstroBot</Text>
+            <Text style={styles.bannerSubtitle}>NASA Mission Intelligence Assistant</Text>
           </View>
-        </GlassCard>
+        </View>
+      </GlassCard>
 
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
@@ -360,8 +360,8 @@ export default function ChatScreen({ route }: any) {
             </TouchableOpacity>
           </GlassCard>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -369,6 +369,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  keyboardAvoidingContainer: {
+    flex: 1,
   },
   headerBanner: {
     marginHorizontal: Spacing.md,
