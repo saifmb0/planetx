@@ -11,7 +11,7 @@ import { NasaLesson, SanitizedLesson } from '../types/nasa';
 const GEMINI_API_KEY = Constants.expoConfig?.extra?.GEMINI_API_KEY;
 
 const MODEL_NAME = 'gemini-2.5-flash'; // Latest experimental model - faster and better
-const FALLBACK_MODEL = 'gemini-2.5-pro'; // Fallback model for 503 errors
+const FALLBACK_MODEL = 'gemini-2.5-pro' ; // Fallback model for 503 errors
 const AI_TIMEOUT = 30000; // 30 seconds timeout
 const TEMPERATURE = 0.4; // Balanced temperature
 
