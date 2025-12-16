@@ -52,6 +52,7 @@ export default function App() {
       <StatusBar style="light" />
       <NavigationContainer theme={theme}>
         <Tab.Navigator
+          id="main-tabs"
           screenOptions={{
             headerShown: false,
             tabBarStyle: styles.tabBar,
