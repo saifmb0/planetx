@@ -25,11 +25,25 @@ jobs:
       
       - name: Install dependencies
         working-directory: packages/mobile
-        run: npm ci
+        run: |
+          echo "📦 Installing mobile app dependencies..."
+          npm ci || {
+            echo "❌ Failed to install dependencies"
+            echo "Try running 'cd packages/mobile && npm ci' locally"
+            exit 1
+          }
+          echo "✅ Dependencies installed"
       
       - name: Check TypeScript
         working-directory: packages/mobile
-        run: npx tsc --noEmit
+        run: |
+          echo "🔍 Running TypeScript type checking for mobile app..."
+          npx tsc --noEmit || {
+            echo "❌ TypeScript compilation failed"
+            echo "Please run 'cd packages/mobile && npx tsc --noEmit' locally to see detailed errors"
+            exit 1
+          }
+          echo "✅ TypeScript check passed"
       
       - name: Check for build errors
         working-directory: packages/mobile
@@ -82,11 +96,25 @@ jobs:
       
       - name: Install dependencies
         working-directory: packages/web
-        run: npm ci
+        run: |
+          echo "📦 Installing web app dependencies..."
+          npm ci || {
+            echo "❌ Failed to install dependencies"
+            echo "Try running 'cd packages/web && npm ci' locally"
+            exit 1
+          }
+          echo "✅ Dependencies installed"
       
       - name: Check TypeScript
         working-directory: packages/web
-        run: npx tsc --noEmit
+        run: |
+          echo "🔍 Running TypeScript type checking for web app..."
+          npx tsc --noEmit || {
+            echo "❌ TypeScript compilation failed"
+            echo "Please run 'cd packages/web && npx tsc --noEmit' locally to see detailed errors"
+            exit 1
+          }
+          echo "✅ TypeScript check passed"
       
       - name: Lint code
         working-directory: packages/web
@@ -95,7 +123,14 @@ jobs:
       
       - name: Build web app
         working-directory: packages/web
-        run: npm run build
+        run: |
+          echo "🏗️ Building web app for production..."
+          npm run build || {
+            echo "❌ Build failed"
+            echo "Please run 'cd packages/web && npm run build' locally to debug"
+            exit 1
+          }
+          echo "✅ Build completed successfully"
         env:
           NEXT_PUBLIC_NASA_API_KEY: ${{ secrets.NASA_API_KEY || 'DEMO_KEY' }}
       
